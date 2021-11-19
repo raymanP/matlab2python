@@ -5,7 +5,7 @@ Difficulties
  A = { 1 2 3  % comment
       4 5 5}
 
- A = 
+ A =
 
 """
 import os
@@ -24,7 +24,7 @@ CHARSET_VAR=r'[a-zA-Z0-9_]'
 
 
 def find_strings(line):
-    
+
     strings=[]
     i=0
     bUnfinished=False
@@ -49,8 +49,8 @@ def find_strings(line):
                     # for sure, it's a transpose
                     bStringStart=False
                 elif PT.string_contains_charset(c_prev,CHARSET_VAR):
-                    # That's the worse case, if you allow a space before a transpose: 
-                    #   for instance [a ' ; b '] : is this a string concatenation? 
+                    # That's the worse case, if you allow a space before a transpose:
+                    #   for instance [a ' ; b '] : is this a string concatenation?
                     #       or concatenation of two transposed variables?
                     #print('>>> Potential problematic line, assuming string start:'+line)
                     bStringStart=True
@@ -216,6 +216,8 @@ class MatlabFile:
         self.FileType=None #
         self.Properties=[] #
         self.Methods=[] #
+        self.PropertyAccess='' # 'P': public, 'D': protected, 'R': private, 'C': constant
+        self.MethodAccess='' # 'P': public, 'D': protected, 'R': private, 'S': static
         self.Header=[] #
         self.Corpus=[] #
         self.Name='' #
@@ -249,7 +251,7 @@ class MatlabFile:
         # --- detecting main file type and splitting into corpus and header
         self.Header=[]
         for lc in lines_comment:
-            if self.FileType is None: 
+            if self.FileType is None:
                 stmt=lc[0].strip().lower()
                 if len(stmt)==0:
                     self.Header.append(lc)
@@ -279,6 +281,18 @@ class MatlabFile:
                         lc[i]=(';'.join([w for w in words if w!='end']),lc[i][1])
                     i-=1
             return lc
+        def getAttr(stmt):
+            attr = 'P';
+            if stmt.find('protected') >= 0:
+                attr = 'D'
+            elif stmt.find('private') >= 0:
+                attr = 'R'
+
+            if stmt.find('static') >= 0:
+                attr += 'S'
+            elif stmt.find('constant') >= 0:
+                attr += 'C'
+            return attr
         if self.FileType=='class':
             bIsInProp=False
             bIsInMeth=False
@@ -286,27 +300,32 @@ class MatlabFile:
             lMeth=[]
             OldCorpus = remove_last_end(self.Corpus) # removing end class
             self.Corpus=[]
+
             for lc in OldCorpus:
                 stmt=lc[0].strip().lower()
                 if stmt.find('properties')==0:
                     bIsInProp=True
                     bIsInMeth=False
+                    attr = getAttr(stmt)
                     lProp=remove_last_end(lProp)
                 elif stmt.find('methods')==0:
                     bIsInProp=False
                     bIsInMeth=True
+                    attr = getAttr(stmt)
                     lMeth=remove_last_end(lMeth)
                 elif bIsInProp:
-                    lProp.append(lc)
+                    lProp.append(lc + (attr,))
                 elif bIsInMeth:
-                    lMeth.append(lc)
+                    lMeth.append(lc + (attr,))
                 else:
                     self.Corpus.append(lc)
                     #self.Header.append(lc)
             lMeth = remove_last_end(lMeth)
             lProp = remove_last_end(lProp)
-            self.Methods=[lc for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
-            self.Properties=[lc for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.Methods=[lc[:2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.Properties=[lc[:2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.MethodAccess=[lc[2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.PropertyAccess=[lc[2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
 
     def toString(self):
         s=''
@@ -326,7 +345,7 @@ class MatlabFile:
             s+='end\n'
         return s
 
-            
+
     def toPython(self,backend='m2py'):
         def postpro(s):
             IMPORTS=[]
@@ -430,7 +449,7 @@ class MatlabFile:
                         for lcp in self.Properties:
                             if lcp[0].find('=')>=0:
                                 lMeth.append((args_out[0]+'.'+lcp[0].strip(),lcp[1]))
-                                
+
                     else:
                         if lc[0].find('@')>=0:
                             lMeth.append(('','% TODO TODO TODO MATLAB2PYTHON: '+lc[0]+lc[1]))
@@ -496,7 +515,7 @@ def matlablines2python(lines):
     MF=MatlabFile(lines=lines)
     return MF.toPython()
 
-    
+
 
 
 
