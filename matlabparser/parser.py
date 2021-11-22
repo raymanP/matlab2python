@@ -165,7 +165,7 @@ class line():
 
 
 # --------------------------------------------------------------------------------}
-# --- Matlab File 
+# --- Matlab File
 # --------------------------------------------------------------------------------{
 class MatlabFile:
     def __init__(self,filename=None,lines=None):
@@ -175,8 +175,16 @@ class MatlabFile:
         self.Methods=[] #
         self.PropertyAccess='' # 'P': public, 'D': protected, 'R': private, 'C': constant
         self.MethodAccess='' # 'P': public, 'D': protected, 'R': private, 'S': static
+        self.PropertyDefs=[] #
+        self.MethodDefs=[] #
         self.Header=[] #
         self.Corpus=[] #
+        self.MethodLines=[] #
+        self.PropertyLines=[] #
+        self.HeaderLines=[] #
+        self.CorpusLines=[] #
+        self.PropertyDefLines=[] #
+        self.MethodDefLines=[] #
         self.Name='' #
         self.ClassChildren='' #
         self.ArgsIn='' #
@@ -207,25 +215,27 @@ class MatlabFile:
 
         # --- detecting main file type and splitting into corpus and header
         self.Header=[]
-        for lc in lines_comment:
+        for lineindex, lc in enumerate(lines_comment):
+            lineno = lineindex + 1
             if self.FileType is None:
                 stmt=lc[0].strip().lower()
                 if len(stmt)==0:
                     self.Header.append(lc)
+                    self.HeaderLines.append(lineno)
                 else:
                     if stmt.find('classdef')==0:
                         self.FileType='class'
                         self.Name = parse_class_def(lc[0])[0]
-                        self.Corpus.append(lc)
                     elif stmt.find('function')==0:
                         self.FileType='function'
                         self.Name = parse_function_def(lc[0])[0]
-                        self.Corpus.append(lc)
                     else:
                         self.FileType='script'
-                        self.Corpus.append(lc)
+                    self.Corpus.append(lc)
+                    self.CorpusLines.append(lineno)
             else:
                 self.Corpus.append(lc)
+                self.CorpusLines.append(lineno)
         # --- For classes we detect properties and methods
         def remove_last_end(lc):
             if len(lc)>0:
@@ -253,29 +263,47 @@ class MatlabFile:
         if self.FileType=='class':
             bIsInProp=False
             bIsInMeth=False
+            iNumIndent=0
             lProp=[]
             lMeth=[]
             OldCorpus = remove_last_end(self.Corpus) # removing end class
+            OldLines = self.CorpusLines;
             self.Corpus=[]
+            self.CorpusLines=[]
+            self.PropertyDefs=[]
+            self.MethodDefs=[]
+            self.PropertyDefLinesStartEnd=[]
+            self.MethodDefLinesStartEnd=[]
 
-            for lc in OldCorpus:
+            for lineno, lc in zip(OldLines, OldCorpus):
                 stmt=lc[0].strip().lower()
                 if stmt.find('properties')==0:
                     bIsInProp=True
                     bIsInMeth=False
                     attr = getAttr(stmt)
                     lProp=remove_last_end(lProp)
+                    self.PropertyDefs.append(lc)
+                    self.PropertyDefLinesStartEnd.append([lineno, None])
+                    iNumIndent = lc[0].count(' ', 0, lc[0].find('p'))
                 elif stmt.find('methods')==0:
                     bIsInProp=False
                     bIsInMeth=True
                     attr = getAttr(stmt)
                     lMeth=remove_last_end(lMeth)
+                    self.MethodDefs.append(lc)
+                    self.MethodDefLinesStartEnd.append([lineno, None])
+                    iNumIndent = lc[0].count(' ', 0, lc[0].find('m'))
                 elif bIsInProp:
-                    lProp.append(lc + (attr,))
+                    lProp.append(lc + (attr,lineno))
+                    if stmt=='end' and lc[0].startswith(' '*iNumIndent+'end'):
+                        self.PropertyDefLinesStartEnd[-1][1] = lineno
                 elif bIsInMeth:
-                    lMeth.append(lc + (attr,))
+                    lMeth.append(lc + (attr,lineno))
+                    if stmt=='end' and lc[0].startswith(' '*iNumIndent+'end'):
+                        self.MethodDefLinesStartEnd[-1][1] = lineno
                 else:
                     self.Corpus.append(lc)
+                    self.CorpusLines.append(lineno)
                     #self.Header.append(lc)
             lMeth = remove_last_end(lMeth)
             lProp = remove_last_end(lProp)
@@ -283,6 +311,8 @@ class MatlabFile:
             self.Properties=[lc[:2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.MethodAccess=[lc[2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.PropertyAccess=[lc[2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.MethodLines=[lc[3] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.PropertyLines=[lc[3] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
 
     def toString(self):
         s=''
