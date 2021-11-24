@@ -173,18 +173,20 @@ class MatlabFile:
         self.FileType=None #
         self.Properties=[] #
         self.Methods=[] #
+        self.PropertyNames=[] #
+        self.MethodNames=[] #
         self.PropertyAccess='' # 'P': public, 'D': protected, 'R': private, 'C': constant
         self.MethodAccess='' # 'P': public, 'D': protected, 'R': private, 'S': static
-        self.PropertyDefs=[] #
-        self.MethodDefs=[] #
+        self.PropertySections=[] #
+        self.MethodSections=[] #
         self.Header=[] #
         self.Corpus=[] #
         self.MethodLines=[] #
         self.PropertyLines=[] #
         self.HeaderLines=[] #
         self.CorpusLines=[] #
-        self.PropertyDefLines=[] #
-        self.MethodDefLines=[] #
+        self.PropertySectionLinesStartEnd=[] #
+        self.MethodSectionLinesStartEnd=[] #
         self.Name='' #
         self.ClassChildren='' #
         self.ArgsIn='' #
@@ -263,55 +265,71 @@ class MatlabFile:
         if self.FileType=='class':
             bIsInProp=False
             bIsInMeth=False
-            iNumIndent=0
             lProp=[]
             lMeth=[]
+            EndLineno=None
+            EndLinenoPre=None
             OldCorpus = remove_last_end(self.Corpus) # removing end class
             OldLines = self.CorpusLines;
             self.Corpus=[]
             self.CorpusLines=[]
-            self.PropertyDefs=[]
-            self.MethodDefs=[]
-            self.PropertyDefLinesStartEnd=[]
-            self.MethodDefLinesStartEnd=[]
+            self.MethodNames=[]
+            self.MethodAccess=[]
+            self.MethodLinesStartEnd=[]
+            self.PropertySections=[]
+            self.MethodSections=[]
+            self.PropertySectionLinesStartEnd=[]
+            self.MethodSectionLinesStartEnd=[]
 
             for lineno, lc in zip(OldLines, OldCorpus):
                 stmt=lc[0].strip().lower()
                 if stmt.find('properties')==0:
+                    if bIsInMeth:
+                        self.MethodLinesStartEnd[-1][1] = EndLinenoPre
                     bIsInProp=True
                     bIsInMeth=False
-                    attr = getAttr(stmt)
+                    attr=getAttr(stmt)
                     lProp=remove_last_end(lProp)
-                    self.PropertyDefs.append(lc)
-                    self.PropertyDefLinesStartEnd.append([lineno, None])
-                    iNumIndent = lc[0].count(' ', 0, lc[0].find('p'))
+                    self.PropertySections.append(lc)
+                    self.PropertySectionLinesStartEnd.append([lineno, None])
                 elif stmt.find('methods')==0:
+                    if bIsInMeth:
+                        self.MethodLinesStartEnd[-1][1] = EndLinenoPre
                     bIsInProp=False
                     bIsInMeth=True
                     attr = getAttr(stmt)
                     lMeth=remove_last_end(lMeth)
-                    self.MethodDefs.append(lc)
-                    self.MethodDefLinesStartEnd.append([lineno, None])
-                    iNumIndent = lc[0].count(' ', 0, lc[0].find('m'))
+                    self.MethodSections.append(lc)
+                    self.MethodSectionLinesStartEnd.append([lineno, None])
                 elif bIsInProp:
                     lProp.append(lc + (attr,lineno))
-                    if stmt=='end' and lc[0].startswith(' '*iNumIndent+'end'):
-                        self.PropertyDefLinesStartEnd[-1][1] = lineno
+                    if stmt=='end':
+                        self.PropertySectionLinesStartEnd[-1][1] = lineno
                 elif bIsInMeth:
-                    lMeth.append(lc + (attr,lineno))
-                    if stmt=='end' and lc[0].startswith(' '*iNumIndent+'end'):
-                        self.MethodDefLinesStartEnd[-1][1] = lineno
+                    if stmt.startswith('function '):
+                        methodname = parse_function_def(lc[0])[0]
+                        self.MethodNames.append(methodname)
+                        self.MethodAccess.append(attr)
+                        self.MethodLinesStartEnd.append([lineno,None])
+                    lMeth.append(lc + (lineno,))
+                    if stmt=='end':
+                        EndLinenoPre = EndLineno
+                        EndLineno = lineno
+                        self.MethodLinesStartEnd[-1][1] = EndLineno
+                        self.MethodSectionLinesStartEnd[-1][1] = EndLineno
                 else:
                     self.Corpus.append(lc)
                     self.CorpusLines.append(lineno)
                     #self.Header.append(lc)
+            if bIsInMeth:
+                self.MethodLinesStartEnd[-1][1] = EndLinenoPre
             lMeth = remove_last_end(lMeth)
             lProp = remove_last_end(lProp)
             self.Methods=[lc[:2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.MethodLines=[lc[2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.Properties=[lc[:2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
-            self.MethodAccess=[lc[2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.PropertyNames=[prop[0].strip() for prop in self.Properties]
             self.PropertyAccess=[lc[2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
-            self.MethodLines=[lc[3] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.PropertyLines=[lc[3] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
 
     def toString(self):
