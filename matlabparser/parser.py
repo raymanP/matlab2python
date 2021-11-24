@@ -328,9 +328,9 @@ class MatlabFile:
             self.Methods=[lc[:2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.MethodLines=[lc[2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.Properties=[lc[:2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
-            self.PropertyNames=[prop[0].strip() for prop in self.Properties]
-            self.PropertyAccess=[lc[2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
-            self.PropertyLines=[lc[3] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
+            self.PropertyNames=[lc[0].strip() for lc in lProp if len(lc[0].strip())>0]
+            self.PropertyAccess=[lc[2] for lc in lProp if len(lc[0].strip())>0]
+            self.PropertyLines=[lc[3] for lc in lProp if len(lc[0].strip())>0]
 
     def toString(self):
         s=''
