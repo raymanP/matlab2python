@@ -181,6 +181,7 @@ class MatlabFile:
         self.MethodSections=[] #
         self.Header=[] #
         self.Corpus=[] #
+        self.CorpusLinesStartEnd=[] #
         self.MethodLines=[] #
         self.PropertyLines=[] #
         self.HeaderLines=[] #
@@ -235,9 +236,11 @@ class MatlabFile:
                         self.FileType='script'
                     self.Corpus.append(lc)
                     self.CorpusLines.append(lineno)
+                    self.CorpusLinesStartEnd = [lineno, None]
             else:
                 self.Corpus.append(lc)
                 self.CorpusLines.append(lineno)
+                self.CorpusLinesStartEnd[1] = lineno
         # --- For classes we detect properties and methods
         def remove_last_end(lc):
             if len(lc)>0:
@@ -321,6 +324,8 @@ class MatlabFile:
                     self.Corpus.append(lc)
                     self.CorpusLines.append(lineno)
                     #self.Header.append(lc)
+                if stmt=='end':
+                    self.CorpusLinesStartEnd[1] = lineno
             if bIsInMeth:
                 self.MethodLinesStartEnd[-1][1] = EndLinenoPre
             lMeth = remove_last_end(lMeth)
