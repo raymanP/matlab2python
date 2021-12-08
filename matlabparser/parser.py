@@ -243,6 +243,7 @@ class MatlabFile:
                 self.CorpusLinesStartEnd[1] = lineno
         # --- For classes we detect properties and methods
         def remove_last_end(lc):
+            endIndex=-1
             if len(lc)>0:
                 bEndFound=False
                 i=len(lc)-1
@@ -250,9 +251,10 @@ class MatlabFile:
                     words = lc[i][0].strip().lower().split(';')
                     if 'end' in words:
                         bEndFound=True
+                        endIndex=i
                         lc[i]=(';'.join([w for w in words if w!='end']),lc[i][1])
                     i-=1
-            return lc
+            return (lc, endIndex)
         def getAttr(stmt):
             attr = 'P';
             if stmt.find('protected') >= 0:
@@ -272,7 +274,8 @@ class MatlabFile:
             lMeth=[]
             EndLineno=None
             EndLinenoPre=None
-            OldCorpus = remove_last_end(self.Corpus) # removing end class
+            OldCorpus, CorpusEndIndex = remove_last_end(self.Corpus) # removing end class
+            self.CorpusLinesStartEnd[1] = self.CorpusLinesStartEnd[0] + CorpusEndIndex
             OldLines = self.CorpusLines;
             self.Corpus=[]
             self.CorpusLines=[]
@@ -292,7 +295,7 @@ class MatlabFile:
                     bIsInProp=True
                     bIsInMeth=False
                     attr=getAttr(stmt)
-                    lProp=remove_last_end(lProp)
+                    lProp=remove_last_end(lProp)[0]
                     self.PropertySections.append(lc)
                     self.PropertySectionLinesStartEnd.append([lineno, None])
                 elif stmt.find('methods')==0:
@@ -301,7 +304,7 @@ class MatlabFile:
                     bIsInProp=False
                     bIsInMeth=True
                     attr = getAttr(stmt)
-                    lMeth=remove_last_end(lMeth)
+                    lMeth=remove_last_end(lMeth)[0]
                     self.MethodSections.append(lc)
                     self.MethodSectionLinesStartEnd.append([lineno, None])
                 elif bIsInProp:
@@ -324,12 +327,10 @@ class MatlabFile:
                     self.Corpus.append(lc)
                     self.CorpusLines.append(lineno)
                     #self.Header.append(lc)
-                if stmt=='end':
-                    self.CorpusLinesStartEnd[1] = lineno
             if bIsInMeth:
                 self.MethodLinesStartEnd[-1][1] = EndLinenoPre
-            lMeth = remove_last_end(lMeth)
-            lProp = remove_last_end(lProp)
+            lMeth = remove_last_end(lMeth)[0]
+            lProp = remove_last_end(lProp)[0]
             self.Methods=[lc[:2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.MethodLines=[lc[2] for lc in lMeth if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
             self.Properties=[lc[:2] for lc in lProp if ((len(lc[0].strip())>0) or ( len(lc[1].strip())>0))]
