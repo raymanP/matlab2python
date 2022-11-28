@@ -194,7 +194,7 @@ class MatlabFile:
         self.ArgsOut='' #
 
         if filename is not None:
-            with open(filename,'r') as f:
+            with open(filename, 'r', errors='ignore') as f:
                 self.raw_lines=f.readlines()
         elif lines is not None:
             if isinstance(lines,list):
@@ -462,14 +462,62 @@ class MatlabFile:
                                 lMeth.append((args_out[0]+'.'+lcp[0].strip(),lcp[1]))
 
                     else:
-                        if lc[0].find('@')>=0:
-                            lMeth.append(('','% TODO TODO TODO MATLAB2PYTHON: '+lc[0]+lc[1]))
+                        if lc[0].find('@') >= 0:
+                            if lc[0].find("this@") >= 0:
+                                # Call to a super constructor
+                                super_call = lc[0].split("@")[-1].strip(".")
+                                super_split = super_call.split("(")
+                                pylc = super_split[0]+".__init__(self,"+super_split[1]
+                            else:
+                                pylc = lc[0]
+                                
+                            if pylc.find("@this") >= 0:
+                                # This is just a property, just remove the @
+                                pylc = pylc.replace("@this", "self")
+                                
+                            if pylc.find(" @") >= 0 or pylc.find(",@") >= 0:
+                                # This is also a static property
+                                for (f, r) in [(" @", " "), (",@", ", ")]:
+                                    if pylc.find(f) >= 0 :
+                                        pylc = pylc.replace(f, r)
+                                        
+                            if pylc.split("@")[0] == "":
+                                # Last case of static property
+                                pylc = pylc[1:]
+                                
+                            if pylc.find("@") >= 0:
+                                if len(pylc.split("@")) == 2:
+                                    # Should be a static method
+                                    method_name, rest = pylc.split("@")
+                                    # Might have a return value though
+                                    if method_name.find("=") >= 0:
+                                        lhs, method_name = method_name.split("=")
+                                        lhs = lhs.strip(" ")
+                                        method_name = method_name.strip(" ")
+                                    else:
+                                        lhs = None
+                                    def split_first(string, token):
+                                        split = string.split(token)
+                                        if len(split) > 2:
+                                            split = [split[0], string[len(split[0])+1:-1]]
+                                        return split
+                                    class_name, params = split_first(rest, "(")
+                                    pylc = class_name + "." + method_name + "(" + params
+                                    if lhs is not None:
+                                        pylc = lhs + " = " + pylc
+                                
+                                else:
+                                    raise Exception("Can't parse '@' statement: " + lc[0])
+                                
+                            lMeth.append(("", pylc))
+                                
                         else:
                             lMeth.append(lc)
                 if not bConstructorFound:
                     raise Exception('Constructor not found in class')
 
                 stmp='\n'.join([lc[0]+lc[1] for lc in lMeth])
+                stmp=stmp.replace("this", "self") # TODO: Shouldn't really happen in comments. 
                 #print(stmp)
                 stmp=parse_matlab_lines(stmp,backend)
                 stmp=stmp.replace('\n','\n    ')
@@ -493,38 +541,63 @@ def parse(filename):
     MF=MatlabFile(filename=filename)
     #print(lines)
 
-def matlab2python(filename,opts=None):
-    # ---Passing options to smop module
+def setSMOPOptions(linenumbers=False, no_comments=False, no_resolve=False, filename='', **kwargs):
+    """ Set options of SMOP module
+    NOTE: these are global...
+    """
     #options.debug=opts.debug
-    smop.options.filename=filename
-    smop.options.no_numbers=not opts.numbers
-    smop.options.no_comments=opts.no_comments
-    smop.options.no_resolve=opts.no_resolve
+    smop.options.filename    = filename
+    smop.options.no_numbers  = not linenumbers # show a comment with original line number
+    smop.options.no_comments = no_comments
+    smop.options.no_resolve  = no_resolve
+
+def matlab2python(filename, output=None, backend='m2py', **kwargs):
+    """ 
+    Convert a matlab file (defined by `filename`) to python. 
+    The result is returned to stdout, or a file if `output` is provided.
+
+    INPUTS:
+     - filename: matlab filename, string
+     - output: python filename to be written. If `output`='stdout' the outputs are printed to screen.
+     - backend: 'm2py' or 'smop': which backend to use for the conversion. 
+                'm2py' relies on smop, but performs additional conversions
+     - kwargs: Dictionary of SMOP options
+         - no_comments: if true, strip out comment lines from the output
+         - linenumbers: if true, show a comment with original line number
+         - no_resolve:  omit name resolution 
+    """
+    # Passing options to smop module
+    setSMOPOptions(filename=output, **kwargs)
     # Looping through files if a list provided
     if isinstance(filename,list):
         for f in filename:
-            matlab2python(f,opts)
+            matlab2python(f, output=output, backend=backend, **kwargs)
         return
     if not os.path.exists(filename):
         raise Exception('FileNotFound:'+filename)
-    MF=MatlabFile(filename=filename)
-
-    if opts.smop:
-        PY=MF.toPython(backend='smop')
-    else:
-        PY=MF.toPython(backend='m2py')
-    if opts.output is None:
+    # Create an instance of MatlabFile and convert to python
+    MF = MatlabFile(filename = filename)
+    PY = MF.toPython(backend = backend)
+    # Return result to user, stdout, or file
+    if output is None:
+        pass
+    elif output == 'stdout':
         print(PY)
     else:
-        with open(opts.output,'w') as f:
+        with open(output, 'w') as f:
             f.write(PY)
+    return PY
 
-#     if opts.output:
-    #print(lines)
-
-def matlablines2python(lines):
-    MF=MatlabFile(lines=lines)
-    return MF.toPython()
+def matlablines2python(lines, output=None, backend='m2py', **kwargs):
+    # Passing options to smop module
+    setSMOPOptions(**kwargs)
+    # Create an instance of MatlabFile and convert to python
+    MF = MatlabFile(lines = lines)
+    PY = MF.toPython(backend=backend)
+    # Return result to user or stdout
+    if output == 'stdout':
+        print(PY)
+    return PY
 
 
 
